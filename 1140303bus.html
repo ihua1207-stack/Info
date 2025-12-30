@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>接駁車即時動態</title>
+    <style>
+        :root {
+            --color-a: #2563eb; /* 公道五 - 藍 */
+            --color-b: #059669; /* 總部 - 綠 */
+            --bg-color: #f8fafc;
+            --card-bg: #ffffff;
+            --text-main: #1e293b;
+            --text-sub: #64748b;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Microsoft JhengHei", sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 15px; /* 手機版邊距微調 */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .container {
+            max-width: 800px;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        /* 1. Header (優化時間顯示) */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 5px 10px;
+        }
+        .header h1 { 
+            margin: 0; 
+            font-size: 1.4rem; 
+        }
+        
+        .time-group {
+            text-align: right;
+            line-height: 1;
+        }
+        .time-label {
+            font-size: 0.8rem;
+            color: var(--text-sub);
+            margin-bottom: 4px;
+            display: block;
+        }
+        .clock {
+            font-size: 1.6rem;
+            font-weight: 800;
+            font-variant-numeric: tabular-nums;
+            color: var(--text-main);
+        }
+
+        /* 2. Status Card */
+        .status-card {
+            background: var(--card-bg);
+            padding: 20px;
+            border-radius: 16px;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+            border: 2px solid transparent;
+            transition: border-color 0.3s;
+        }
+
+        .bg-arrow {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 8rem;
+            opacity: 0.1;
+            font-weight: bold;
+            z-index: 0;
+            pointer-events: none;
+            transition: color 0.3s, transform 0.3s;
+        }
+
+        .status-content { position: relative; z-index: 1; }
+        .status-title { color: var(--text-sub); font-size: 0.9rem; margin-bottom: 5px; }
+        .status-main { font-size: 1.6rem; font-weight: bold; margin: 5px 0; }
+        .status-sub { font-size: 1.1rem; color: var(--text-sub); }
+
+        /* 3. Visual Track (手機版優化) */
+        .track-area {
+            background: var(--card-bg);
+            padding: 70px 10px; /* 增加上下padding容納長文字 */
+            border-radius: 16px;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+            position: relative;
+            overflow: hidden; /* 防止超出 */
+        }
+
+        .road {
+            height: 12px;
+            background: #e2e8f0;
+            border-radius: 6px;
+            position: relative;
+            margin: 0 75px; /* 兩側留白給車站寬度的一半 */
+        }
+
+        .station {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 150px; /* 寬度足夠容納長文字 */
+            text-align: center;
+            text-decoration: none;
+            cursor: pointer;
+            z-index: 5;
+            /* 點擊回饋 */
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        .station:active { transform: translateY(-50%) scale(0.95); }
+
+        .station-left { left: 0; transform: translate(-50%, -50%); }
+        .station-right { right: 0; transform: translate(50%, -50%); }
+
+        .dot {
+            width: 20px; height: 20px;
+            background: white; border: 5px solid #ccc;
+            border-radius: 50%; margin-bottom: 6px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .name { 
+            font-weight: bold; 
+            font-size: 1.1rem; 
+            color: var(--text-main); 
+            line-height: 1.2;
+        }
+        .detail { 
+            font-size: 0.75rem; color: white; 
+            padding: 4px 8px; border-radius: 8px; margin-top: 4px; 
+            display: inline-block;
+            line-height: 1.3;
+        }
+        
+        /* 新增：地圖提示標籤 */
+        .map-hint {
+            font-size: 0.7rem;
+            margin-top: 4px;
+            color: var(--text-sub);
+            border: 1px solid #e2e8f0;
+            background: #f8fafc;
+            padding: 2px 6px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            gap: 3px;
+        }
+
+        /* 顏色定義 */
+        .st-a .dot { border-color: var(--color-a); }
+        .st-a .name { color: var(--color-a); }
+        .st-a .detail { background-color: var(--color-a); }
+
+        .st-b .dot { border-color: var(--color-b); }
+        .st-b .name { color: var(--color-b); }
+        .st-b .detail { background-color: var(--color-b); }
+
+        /* 公車 */
+        .bus {
+            position: absolute;
+            top: 50%; left: 0%;
+            transform: translate(-50%, -50%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            transition: left 1s linear;
+            z-index: 10;
+            width: 80px; /* 明確寬度避免被切 */
+        }
+        .bus-icon { 
+            font-size: 2.8rem; 
+            filter: drop-shadow(0 3px 2px rgba(0,0,0,0.2)); 
+            transition: transform 0.3s;
+        }
+        .bus-tag {
+            background: #1e293b; color: white;
+            font-size: 0.75rem; padding: 3px 6px;
+            border-radius: 4px; white-space: nowrap;
+            margin-top: -5px; font-weight: bold;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+
+        /* 4. Schedules */
+        .schedules {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+        }
+        .schedule-col {
+            flex: 1;
+            background: var(--card-bg);
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            text-align: center;
+        }
+        .col-header { padding: 8px; color: white; font-weight: bold; font-size: 0.95rem; }
+        .header-a { background: var(--color-a); }
+        .header-b { background: var(--color-b); }
+        
+        .time-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+            padding: 10px; gap: 8px;
+        }
+        .time-item {
+            padding: 6px; background: #f1f5f9; border-radius: 6px;
+            font-variant-numeric: tabular-nums; color: #64748b; font-size: 0.9rem;
+        }
+        .time-active {
+            background: #fffbeb; color: #b45309; font-weight: bold;
+            border: 2px solid #fcd34d;
+        }
+
+        /* Footer */
+        .footer {
+            margin-top: 10px;
+            font-size: 0.75rem;
+            color: #94a3b8;
+            text-align: center;
+            padding-bottom: 20px;
+        }
+
+        /* Debug */
+        .debug { 
+            margin-top: 10px; padding: 15px; 
+            border-top: 1px dashed #cbd5e1; 
+            text-align: center; color: #94a3b8; width: 100%; box-sizing: border-box;
+        }
+        input[type=range] { width: 100%; max-width: 300px; }
+
+        /* Mobile Optimization */
+        @media (max-width: 400px) {
+            .header h1 { font-size: 1.2rem; }
+            .status-main { font-size: 1.4rem; }
+            .bg-arrow { font-size: 6rem; }
+            
+            /* 讓站點文字在極小螢幕縮小一點 */
+            .station { width: 110px; }
+            .road { margin: 0 55px; }
+            .name { font-size: 1rem; }
+            .detail { font-size: 0.7rem; padding: 3px 6px; }
+            .map-hint { font-size: 0.65rem; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    
+    <!-- 1. Header with "Current Time" label -->
+    <div class="header">
+        <h1>🚌 接駁車動態</h1>
+        <div class="time-group">
+            <span class="time-label">現在時間</span>
+            <span class="clock" id="clock">12:00</span>
+        </div>
+    </div>
+
+    <!-- 2. Status Card -->
+    <div class="status-card" id="status-card">
+        <div class="bg-arrow" id="bg-arrow">➔</div>
+        <div class="status-content">
+            <div class="status-title">目前狀態</div>
+            <div class="status-main" id="status-main">載入中...</div>
+            <div class="status-sub" id="status-sub">--</div>
+        </div>
+    </div>
+
+    <!-- 3. Visual Track (Added Map Hint) -->
+    <div class="track-area">
+        <div class="road">
+            <!-- 左站：公道五 -->
+            <a href="https://maps.app.goo.gl/EYkTirWUCj2DiTuK9" target="_blank" class="station station-left st-a">
+                <div class="dot"></div>
+                <div class="name">公道五</div>
+                <div class="detail">B1 電梯口</div>
+                <div class="map-hint">👆 點擊開啟地圖</div>
+            </a>
+
+            <!-- 右站：總部 -->
+            <a href="https://maps.app.goo.gl/VS1zLzriYvTnjgAg6" target="_blank" class="station station-right st-b">
+                <div class="dot"></div>
+                <div class="name">總部</div>
+                <div class="detail">展業二路<br>平面戶外停車場</div>
+                <div class="map-hint">👆 點擊開啟地圖</div>
+            </a>
+
+            <!-- 公車 -->
+            <div class="bus" id="bus">
+                <div class="bus-icon" id="bus-icon">🚌</div>
+                <div class="bus-tag" id="bus-tag">待命</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 4. Schedules -->
+    <div class="schedules">
+        <div class="schedule-col">
+            <div class="col-header header-a">公道五 發車</div>
+            <div class="time-grid" id="grid-a"></div>
+        </div>
+        <div class="schedule-col">
+            <div class="col-header header-b">總部 發車</div>
+            <div class="time-grid" id="grid-b"></div>
+        </div>
+    </div>
+
+    <!-- 5. Debug (Optional) -->
+    <div class="debug">
+        <label>測試滑桿 (模擬時間): </label>
+        <div style="margin:5px 0;">
+            <input type="range" id="sim-slider" min="480" max="1020" value="0">
+        </div>
+        <div id="sim-text" style="font-size: 0.8rem;">模式: 系統時間</div>
+    </div>
+
+    <!-- 6. Footer Version Info -->
+    <div class="footer">
+        班次版本發布時間 114.03.03
+    </div>
+
+</div>
+
+<script>
+    // --- Config ---
+    const TRAVEL_TIME = 25; 
+    const schedules = {
+        A: ["08:45", "09:45", "10:40", "11:30", "13:15", "14:30", "15:30"], // 公道五發
+        B: ["09:15", "10:15", "11:10", "11:50", "13:45", "15:00", "16:30"]  // 總部發
+    };
+
+    // 整合資料
+    // Dir: 0 = A->B (Left to Right), 1 = B->A (Right to Left)
+    let trips = [];
+    function toMins(s) { const [h,m] = s.split(':').map(Number); return h*60+m; }
+
+    schedules.A.forEach(t => trips.push({ t: t, m: toMins(t), dir: 0, from: '公道五', to: '總部' }));
+    schedules.B.forEach(t => trips.push({ t: t, m: toMins(t), dir: 1, from: '總部', to: '公道五' }));
+    trips.sort((a,b) => a.m - b.m);
+
+    // --- DOM Elements ---
+    const els = {
+        clock: document.getElementById('clock'),
+        card: document.getElementById('status-card'),
+        bgArrow: document.getElementById('bg-arrow'),
+        main: document.getElementById('status-main'),
+        sub: document.getElementById('status-sub'),
+        bus: document.getElementById('bus'),
+        busIcon: document.getElementById('bus-icon'),
+        busTag: document.getElementById('bus-tag'),
+        gridA: document.getElementById('grid-a'),
+        gridB: document.getElementById('grid-b'),
+        slider: document.getElementById('sim-slider'),
+        simText: document.getElementById('sim-text')
+    };
+
+    // --- Render Tables ---
+    function initGrids() {
+        schedules.A.forEach(t => {
+            let div = document.createElement('div');
+            div.className = 'time-item'; div.innerText = t; div.id = `t-a-${t.replace(':','')}`;
+            els.gridA.appendChild(div);
+        });
+        schedules.B.forEach(t => {
+            let div = document.createElement('div');
+            div.className = 'time-item'; div.innerText = t; div.id = `t-b-${t.replace(':','')}`;
+            els.gridB.appendChild(div);
+        });
+    }
+    initGrids();
+
+    // --- Core Logic ---
+    function update(min) {
+        document.querySelectorAll('.time-active').forEach(e => e.classList.remove('time-active'));
+
+        let active = null, next = null;
+
+        for(let trip of trips) {
+            if (min >= trip.m && min < trip.m + TRAVEL_TIME) { active = trip; break; }
+            if (min < trip.m) { next = trip; break; }
+        }
+
+        let pos = 0;        
+        let transformScale = "scaleX(1)"; // 預設朝左
+        let color = '#ccc';
+        let arrowText = ''; 
+        let arrowAngle = 0;
+
+        if (active) {
+            // --- 行駛中 ---
+            let p = (min - active.m) / TRAVEL_TIME;
+            
+            if (active.dir === 0) { 
+                // 去程 A -> B (往右)
+                pos = p * 100;
+                transformScale = "scaleX(-1)"; // Emoji原朝左，翻轉後朝右
+                color = '#f59e0b'; // 橘色
+                els.main.innerText = "車輛行駛中";
+                els.sub.innerText = `往 總部 (預計 ${Math.round(TRAVEL_TIME*(1-p))} 分鐘抵達)`;
+                els.busTag.innerText = ">>> 往 總部";
+                els.busTag.style.backgroundColor = "#ef4444"; 
+                arrowText = "➔"; arrowAngle = 0;
+                highlight(`t-a-${active.t.replace(':','')}`);
+            } else { 
+                // 回程 B -> A (往左)
+                pos = 100 - (p * 100);
+                transformScale = "scaleX(1)"; // Emoji原朝左，維持朝左
+                color = '#f59e0b';
+                els.main.innerText = "車輛行駛中";
+                els.sub.innerText = `往 公道五 (預計 ${Math.round(TRAVEL_TIME*(1-p))} 分鐘抵達)`;
+                els.busTag.innerText = "往 公道五 <<<";
+                els.busTag.style.backgroundColor = "#ef4444";
+                arrowText = "➔"; arrowAngle = 180;
+                highlight(`t-b-${active.t.replace(':','')}`);
+            }
+            els.bgArrow.style.opacity = "0.15"; 
+
+        } else if (next) {
+            // --- 等待中 ---
+            let wait = Math.floor(next.m - min);
+            let waitStr = wait > 60 ? `${Math.floor(wait/60)}時${wait%60}分` : `${wait}分`;
+            
+            if (next.dir === 0) { 
+                // 下班車在左邊發 (準備往右)
+                pos = 0;
+                transformScale = "scaleX(-1)"; // 預備姿勢朝右
+                color = '#2563eb'; // 藍
+                els.main.innerText = "公道五 等待發車";
+                els.sub.innerText = `下班車: ${next.t} (還有 ${waitStr})`;
+                els.busTag.innerText = "待命";
+                els.busTag.style.backgroundColor = "#1e293b";
+                arrowText = "➔"; arrowAngle = 0;
+                highlight(`t-a-${next.t.replace(':','')}`);
+            } else { 
+                // 下班車在右邊發 (準備往左)
+                pos = 100;
+                transformScale = "scaleX(1)"; // 預備姿勢朝左
+                color = '#059669'; // 綠
+                els.main.innerText = "總部 等待發車";
+                els.sub.innerText = `下班車: ${next.t} (還有 ${waitStr})`;
+                els.busTag.innerText = "待命";
+                els.busTag.style.backgroundColor = "#1e293b";
+                arrowText = "➔"; arrowAngle = 180; 
+                highlight(`t-b-${next.t.replace(':','')}`);
+            }
+            els.bgArrow.style.opacity = "0.05"; 
+
+        } else {
+            // --- 收班 ---
+            els.main.innerText = "本日已收班";
+            els.sub.innerText = "明日請早";
+            els.busTag.innerText = "休息";
+            color = "#64748b";
+            arrowText = "";
+            let last = trips[trips.length-1];
+            // 停在終點
+            pos = (last.dir === 0) ? 100 : 0; 
+            transformScale = (last.dir === 0) ? "scaleX(1)" : "scaleX(-1)";
+        }
+
+        // 更新畫面
+        els.bus.style.left = `${pos}%`;
+        els.busIcon.style.transform = transformScale;
+        els.card.style.borderColor = color;
+        els.bgArrow.innerText = arrowText;
+        els.bgArrow.style.transform = `translate(-50%, -50%) rotate(${arrowAngle}deg)`;
+        els.bgArrow.style.color = color;
+    }
+
+    function highlight(id) {
+        let el = document.getElementById(id);
+        if(el) el.classList.add('time-active');
+    }
+
+    // --- Loop ---
+    let simMode = false;
+    function tick() {
+        let m;
+        if(simMode) {
+            m = parseFloat(els.slider.value);
+            let hh = Math.floor(m/60), mm = Math.floor(m%60);
+            els.clock.innerText = `${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')} (模擬)`;
+            els.clock.style.color = 'red';
+        } else {
+            let d = new Date();
+            m = d.getHours()*60 + d.getMinutes() + d.getSeconds()/60;
+            els.clock.innerText = d.toLocaleTimeString('zh-TW', {hour12:false, hour:'2-digit', minute:'2-digit'});
+            els.clock.style.color = 'var(--text-main)';
+            els.slider.value = m;
+        }
+        update(m);
+        requestAnimationFrame(tick);
+    }
+
+    els.slider.addEventListener('input', () => {
+        if(!simMode) { simMode = true; els.simText.innerText = "模式: 手動模擬"; }
+    });
+
+    tick();
+</script>
+</body>
+</html>
