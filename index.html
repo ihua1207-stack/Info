@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>聚餐選位表</title>
+    <style>
+        body { font-family: '微軟正黑體', sans-serif; background-color: #f0f2f5; text-align: center; padding: 20px; }
+        h1 { color: #333; }
+        .restaurant { display: grid; grid-template-columns: repeat(2, 1fr); gap: 30px; max-width: 600px; margin: 0 auto; }
+        
+        /* 桌子樣式 */
+        .table-group { background: #fff; padding: 15px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .table-title { font-weight: bold; margin-bottom: 10px; color: #555; }
+        .seats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+        /* 座位樣式 */
+        .seat {
+            padding: 15px 5px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: 0.2s;
+            font-size: 14px;
+            background: #e6fffa; /* 預設綠色 (空位) */
+            color: #2c7a7b;
+        }
+        .seat:hover { background: #b2f5ea; }
+        
+        /* 已佔用樣式 */
+        .seat.occupied {
+            background-color: #feb2b2; /* 紅色 (有人) */
+            color: #c53030;
+            border-color: #fc8181;
+            cursor: not-allowed;
+        }
+
+        /* 響應式：手機變單排 */
+        @media (max-width: 500px) { .restaurant { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+
+    <h1>🍽️ 聚餐座位選擇 (4桌 x 4人)</h1>
+    <p>點擊綠色座位輸入名字，紅色代表已有人。</p>
+
+    <div id="app" class="restaurant">
+        <!-- 內容會由 JS 自動產生 -->
+        載入中...
+    </div>
+
+    <!-- 引入 Firebase -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getDatabase, ref, onValue, update } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+
+        // 🔴 請將下方的設定替換成你自己在 Firebase 申請的內容
+        const firebaseConfig = {
+  apiKey: "AIzaSyDDZoM7D1aNDAekAcjZLnvSiLaEhWd7apU",
+
+  authDomain: "arrangement-8234f.firebaseapp.com",
+
+  databaseURL: "https://arrangement-8234f-default-rtdb.firebaseio.com",
+
+  projectId: "arrangement-8234f",
+
+  storageBucket: "arrangement-8234f.firebasestorage.app",
+
+  messagingSenderId: "443718243726",
+
+  appId: "1:443718243726:web:efe97ca747b296b74640df",
+
+        };
+
+        // 初始化 Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+        const seatsRef = ref(db, 'seats');
+
+        // 定義座位結構 (4桌，每桌4人)
+        const totalTables = 4;
+        const seatsPerTable = 4;
+
+        // 渲染畫面函數
+        function renderSeats(data) {
+            const container = document.getElementById('app');
+            container.innerHTML = ''; // 清空
+
+            for (let t = 1; t <= totalTables; t++) {
+                const tableDiv = document.createElement('div');
+                tableDiv.className = 'table-group';
+                tableDiv.innerHTML = `<div class="table-title">第 ${t} 桌</div>`;
+                
+                const seatsDiv = document.createElement('div');
+                seatsDiv.className = 'seats';
+
+                for (let s = 1; s <= seatsPerTable; s++) {
+                    const seatId = `t${t}_s${s}`;
+                    const occupant = data ? data[seatId] : null;
+                    
+                    const btn = document.createElement('div');
+                    btn.className = `seat ${occupant ? 'occupied' : ''}`;
+                    btn.textContent = occupant ? occupant : `座位 ${s}`;
+                    
+                    // 點擊事件
+                    if (!occupant) {
+                        btn.onclick = () => selectSeat(seatId);
+                    } else {
+                        btn.onclick = () => alert(`這裡是 ${occupant} 的位子囉！`);
+                    }
+                    seatsDiv.appendChild(btn);
+                }
+                tableDiv.appendChild(seatsDiv);
+                container.appendChild(tableDiv);
+            }
+        }
+
+        // 點擊選位邏輯
+        function selectSeat(seatId) {
+            const name = prompt("請輸入你的名字：");
+            if (name && name.trim() !== "") {
+                const updates = {};
+                updates[seatId] = name;
+                // 更新資料庫
+                update(seatsRef, updates)
+                    .then(() => alert("選位成功！"))
+                    .catch((err) => alert("發生錯誤：" + err));
+            }
+        }
+
+        // 監聽資料庫變動 (即時同步關鍵)
+        onValue(seatsRef, (snapshot) => {
+            const data = snapshot.val() || {};
+            renderSeats(data);
+        });
+
+    </script>
+</body>
+</html>
